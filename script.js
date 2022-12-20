@@ -46,9 +46,14 @@ const app = new Vue({
   methods: {
     async writeClue(clue) {
       this.clue = ""
-      for (let i = 0; i < clue.length; i++) {
-        const char = clue[i]
-        this.clue += char
+      console.log(clue.match(/<.*?>|./gs))
+      for (const match of clue.match(/<.*?>|./gs)) {
+        const str = match
+        this.clue += str
+
+        // console.log(match, str.length)
+
+        if (str.length > 1) continue
 
         const sleepDurations = {
           "\n": 300,
@@ -56,7 +61,7 @@ const app = new Vue({
           ",": 100
         }
 
-        await new Promise(r => setTimeout(r, sleepDurations[char] || 5))
+        await new Promise(r => setTimeout(r, sleepDurations[str] || 5))
       }
     },
     async getClue(key) {
