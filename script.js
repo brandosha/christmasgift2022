@@ -3,7 +3,12 @@ const app = new Vue({
   data: {
     puzzles: null,
     passphrase: "",
-    clue: ""
+    clue: {
+      message: "",
+      solved: false
+    },
+
+    timerMs: 0
   },
   async created() {
     const localDevKeys = await fetch("/keys.json")
@@ -41,72 +46,118 @@ const app = new Vue({
 
     const { puzzles } = this
 
-    this.getClue(puzzles.current.key)
+    const { lastPassphrase } = localStorage
+    const { key } = puzzles.current
+
+    if (lastPassphrase != null) {
+      const fullKey = key + (lastPassphrase ? "/" + lastPassphrase : "")
+      if (await this.getClue(fullKey, true)) {
+        this.passphrase = lastPassphrase
+      } else {
+        this.getClue(key)
+      }
+    } else {
+      this.getClue(key)
+    }
   },
   methods: {
     async writeClue(clue) {
-      this.clue = ""
-      console.log(clue.match(/<.*?>|./gs))
-      for (const match of clue.match(/<.*?>|./gs)) {
-        const str = match
-        this.clue += str
+      this.clue.solved = false
+      this.clue.message = ""
 
-        // console.log(match, str.length)
+      for (const match of clue.message.match(/<.*?>|./gs)) {
+        const str = match
+        this.clue.message += str
 
         if (str.length > 1) continue
 
         const sleepDurations = {
           "\n": 300,
           ".": 200,
-          ",": 100
+          ",": 100,
+          " ": 60
         }
 
-        await new Promise(r => setTimeout(r, sleepDurations[str] || 5))
+        await sleep(sleepDurations[str])
+      }
+
+      if (clue.solved) {
+        await sleep(1000)
+        this.clue.solved = true
+        this.updateTimer()
+      } else {
+        this.clue.solved = false
       }
     },
-    async getClue(key) {
+    async getClue(key, disableWriteAnimation) {
       const hash1 = await hash(key)
       const hash2 = hex(await hash(hash1))
   
       const fileName = hash2.slice(0, 12) + ".b64"
 
       const fileResponse = await fetch("/files/" + fileName)
-      if (!fileResponse.ok) {
-        alert("Incorrect passphrase")
-        return
-      }
+      if (!fileResponse.ok) return false
 
       const b64 = await fileResponse.text()
       const encrypted = Base64.decode(b64)
   
       const secretKey = await crypto.subtle.importKey('raw', hash1, 'AES-GCM', false, ['encrypt', 'decrypt'])
-      const clue = await crypto.subtle.decrypt(aesAlgorithm, secretKey, encrypted)
+      let clue = await crypto.subtle.decrypt(aesAlgorithm, secretKey, encrypted)
+      clue = new TextDecoder().decode(clue)
+      clue = JSON.parse(clue)
 
-      this.writeClue(new TextDecoder().decode(clue))
+      if (disableWriteAnimation) {
+        this.clue = clue
+        if (clue.solved) this.updateTimer()
+
+        return true
+      } else {
+        return {
+          written: this.writeClue(clue)
+        }
+      }
     },
-    submitPassphrase() {
+    async submitPassphrase() {
       const { puzzles } = this
       const passphrase = this.passphrase.trim().toLowerCase()
 
-      if (!passphrase.length) {
-        this.getClue(puzzles.current.key)
+      let key = puzzles.current.key
+      if (passphrase) key += "/" + passphrase
+
+      this.passphrase = ""
+      if (await this.getClue(key)) {
+        localStorage.setItem('lastPassphrase', passphrase)
       } else {
-        this.getClue(puzzles.current.key + "/" + passphrase)
-        this.passphrase = ""
+        alert("Incorrect passphrase")
       }
     },
-    async encryptClue(key, clue) {
-      const hash1 = await hash(key)
-      const hash2 = hex(await hash(hash1))
-  
-      const fileName = hash2.slice(0, 12) + ".b64"
-      console.log(fileName)
+    updateTimer() {
+      if (!this.clue.solved) return
+      this.timerMs = this.puzzles.next.utc - Date.now()
 
-      const data = new TextEncoder().encode(clue)
-  
-      const secretKey = await crypto.subtle.importKey('raw', hash1, 'AES-GCM', false, ['encrypt', 'decrypt'])
-      const encrypted = await crypto.subtle.encrypt(aesAlgorithm, secretKey, data)
-      console.log(Base64.encode(encrypted))
+      if (this.timerMs < 0) location.reload()
+
+      setTimeout(() => this.updateTimer(), 1000)
+    }
+  },
+  computed: {
+    timerDurations() {
+      const durations = dayjs.duration(this.timerMs).format("M,D,H,m,s").split(',').map(n => parseInt(n))
+      const names = ["months", "days", "hours", "minutes", "seconds"]
+
+      const result = []
+      durations.forEach((count, i) => {
+        if (count === 0 && result.length == 0) return
+
+        let name = names[i]
+        if (count === 1) name = name.slice(0, -1)
+
+        result.push({
+          count, name
+        })
+      })
+
+      return result
     }
   }
 })
@@ -115,6 +166,8 @@ const aesAlgorithm = {
   name: 'AES-GCM',
   iv: new Uint8Array(Array.from({ length: 12 }, i => 0))
 }
+
+const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 const Base64 = {
   encode: arr => btoa(Array.from(new Uint8Array(arr)).map(c => String.fromCharCode(c)).join("")),

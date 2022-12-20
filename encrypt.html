@@ -1,0 +1,125 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Encryption Tool</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
+
+  <style>
+    html, body {
+      background-color: #111;
+      color: #eee;
+    }
+
+    .form-control {
+      background-color: black!important;
+      color: #eee!important;
+      border-color: #6c757d;
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="container py-4 font-monospace">
+    <form class="mb-3" @submit.prevent="encryptClue">
+      <div class="d-flex align-items-center mb-3">
+        <select v-model="puzzleDate" class="me-3">
+          <option v-for="(v, k) in keys" :value="k">{{k}}</option>
+        </select>
+        <input v-model="key" class="form-control">
+      </div>
+      
+      <textarea v-model="message" class="form-control mb-3" rows="10"></textarea>
+
+      <div class="d-flex align-items-center py-3">
+        <label class="mx-3">
+          <input v-model="solved" type="checkbox">
+          Solved
+        </label>
+
+        <button class="ms-auto btn btn-secondary">
+          Encrypt
+        </button>
+      </div>
+    </form>
+
+    <div class="mt-4">
+      <input :value="fileName" class="form-control user-select-all mb-3" readonly>
+      <textarea class="form-control user-select-all" readonly>{{ encrypted }}</textarea>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+  <script>
+    var app = new Vue({
+      el: "#app",
+      data: {
+        key: "",
+        message: "",
+        solved: false,
+
+        fileName: "",
+        encrypted: "",
+
+        keys: {},
+        puzzleDate: "12/1/22"
+      },
+      async created() {
+        this.keys = await fetch("/keys.json").then(res => res.json())
+      },
+      methods: {
+        async encryptClue() {
+          const { message, solved } = this
+
+          let key = this.keys[this.puzzleDate]
+          if (this.key) key += "/" + this.key.trim().toLowerCase()
+
+          const hash1 = await hash(key)
+          const hash2 = hex(await hash(hash1))
+      
+          const fileName = hash2.slice(0, 12) + ".b64"
+          this.fileName = fileName
+
+          const data = new TextEncoder().encode(JSON.stringify({
+            message, solved: solved || undefined
+          }))
+      
+          const secretKey = await crypto.subtle.importKey('raw', hash1, 'AES-GCM', false, ['encrypt', 'decrypt'])
+          const aesAlgorithm = {
+            name: 'AES-GCM',
+            iv: new Uint8Array(Array.from({ length: 12 }, i => 0))
+          }
+          const encrypted = await crypto.subtle.encrypt(aesAlgorithm, secretKey, data)
+          this.encrypted = Base64.encode(encrypted)
+        }
+      }
+    })
+
+    const Base64 = {
+      encode: arr => btoa(Array.from(new Uint8Array(arr)).map(c => String.fromCharCode(c)).join("")),
+      decode: b64 => new Uint8Array(atob(b64).split("").map(c => c.charCodeAt(0)))
+    }
+
+    function hash(data) {
+      if (typeof data === 'string') {
+        const textEncoder = new TextEncoder()
+        data = textEncoder.encode(data)
+      }
+      
+      return crypto.subtle.digest('SHA-256', data)
+    }
+
+    function hex(buffer) {
+      const bytes = new Uint8Array(buffer)
+
+      let output = ""
+      for (let i = 0; i < bytes.length; i++) {
+        output += bytes[i].toString(16)
+      }
+
+      return output
+    }
+  </script>
+</body>
+</html>
