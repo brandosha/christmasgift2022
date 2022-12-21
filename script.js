@@ -78,7 +78,7 @@ const app = new Vue({
           " ": 60
         }
 
-        await sleep(sleepDurations[str])
+        await sleep(sleepDurations[str] || 5)
       }
 
       if (clue.solved) {
