@@ -17,34 +17,43 @@ const app = new Vue({
 
       const dates = Object.keys(keys).map(key => {
         const [m, d, y] = key.split("/")
-        return [key, Date.UTC('20' + y, m - 1, d)]
+        return [key, Date.UTC('20' + y, m - 1, d, 8)]
       })
       dates.sort((a, b) => a[1] - b[1])
 
       const puzzles = this.puzzles = {
-        previous: []
+        previous: [],
+        unlocked: []
       }
 
       const now = Date.now()
       for (const [date, utc] of dates) {
+        const puzzle = {
+          date, utc, key: keys[date]
+        }
+
+        puzzles.unlocked.push(puzzle)
+
+        if (utc < now) {
+          puzzles.previous.push(puzzle)
+        }
+
         if (utc > now && !puzzles.current) {
           puzzles.next = {
             date, utc
           }
-          puzzles.current = puzzles.previous[puzzles.previous.length - 1]
+          puzzles.current = puzzles.previous.pop()
         }
-    
-        puzzles.previous.push({
-          date, utc, key: keys[date]
-        })
       }
     } else {
       const puzzles = await fetch("https://christmas-gift-key-distributor.brandosha.repl.co").then(res => res.json())
-      // keys.previous.push(keys.current)
+      // puzzles.previous.push(puzzles.current)
+      puzzles.unlocked = puzzles.previous.concat([puzzles.current])
       this.puzzles = puzzles
     }
 
     const { puzzles } = this
+    console.log(new Date(puzzles.next.utc).toUTCString())
 
     const { lastPassphrase } = localStorage
     const { key } = puzzles.current
@@ -74,6 +83,7 @@ const app = new Vue({
         const sleepDurations = {
           "\n": 300,
           ".": 200,
+          "?": 200,
           ",": 100,
           " ": 60
         }
@@ -102,12 +112,19 @@ const app = new Vue({
       const encrypted = Base64.decode(b64)
   
       const secretKey = await crypto.subtle.importKey('raw', hash1, 'AES-GCM', false, ['encrypt', 'decrypt'])
+
+      const aesAlgorithm = {
+        name: 'AES-GCM',
+        iv: new Uint8Array(Array.from({ length: 12 }, i => 0))
+      }
       let clue = await crypto.subtle.decrypt(aesAlgorithm, secretKey, encrypted)
       clue = new TextDecoder().decode(clue)
       clue = JSON.parse(clue)
 
       if (disableWriteAnimation) {
+        clue.solved = !!clue.solved
         this.clue = clue
+
         if (clue.solved) this.updateTimer()
 
         return true
@@ -138,11 +155,35 @@ const app = new Vue({
       if (this.timerMs < 0) location.reload()
 
       setTimeout(() => this.updateTimer(), 1000)
+    },
+    selectPuzzle(i) {
+      const puzzle = this.puzzles.unlocked[i]
+      this.puzzles.current = puzzle
+
+      this.getClue(puzzle.key)
     }
   },
   computed: {
     timerDurations() {
-      const durations = dayjs.duration(this.timerMs).format("M,D,H,m,s").split(',').map(n => parseInt(n))
+      this.timerMs;
+
+      const next = dayjs(this.puzzles.next.utc)
+      const now = dayjs()
+
+      const months = next.diff(now, "M")
+      let daysInMonths = 0
+      for (let i = 0; i < months; i++) {
+        daysInMonths += next.subtract(i + 1, "M").daysInMonth()
+      }
+
+      const durations = [
+        months,
+        next.diff(now, "d") - daysInMonths,
+        next.diff(now, "h") % 24,
+        next.diff(now, "m") % 60,
+        next.diff(now, "s") % 60
+      ]
+
       const names = ["months", "days", "hours", "minutes", "seconds"]
 
       const result = []
@@ -161,11 +202,6 @@ const app = new Vue({
     }
   }
 })
-
-const aesAlgorithm = {
-  name: 'AES-GCM',
-  iv: new Uint8Array(Array.from({ length: 12 }, i => 0))
-}
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
@@ -193,5 +229,3 @@ function hex(buffer) {
 
   return output
 }
-
-console.log("Oh, you want to look at the code?\n\nKnock yourself out :)")
