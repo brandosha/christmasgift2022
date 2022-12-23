@@ -18,7 +18,9 @@
   <div id="app" class="container py-4 font-monospace">
     <form class="d-flex align-items-center mb-3" @submit.prevent="submitPassphrase">
       <select v-if="puzzles && puzzles.unlocked.length > 1" class="me-3" @change="selectPuzzle($event.target.selectedIndex)">
-        <option v-for="puzzle in puzzles.unlocked" :selected="puzzle === puzzles.current">{{ puzzle.date }}</option>
+        <option v-for="puzzle in puzzles.unlocked" :selected="puzzle === puzzles.current">
+          {{ niceDate(puzzle) }}
+        </option>
       </select>
       <input v-model="passphrase" class="form-control bg-black border-secondary text-light me-3" placeholder="Enter passphrase">
       <button class="btn btn-secondary">

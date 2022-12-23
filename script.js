@@ -156,6 +156,12 @@ const app = new Vue({
 
       setTimeout(() => this.updateTimer(), 1000)
     },
+    niceDate(puzzle) {
+      const [m, _, y] = puzzle.date.split("/")
+
+      const months = { "3": "Mar", "6": "Jun", "9": "Sep", "12": "Dec" }
+      return `${months[m]} 20${y}`
+    },
     selectPuzzle(i) {
       const puzzle = this.puzzles.unlocked[i]
       this.puzzles.current = puzzle
