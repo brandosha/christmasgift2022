@@ -47,13 +47,11 @@ const app = new Vue({
       }
     } else {
       const puzzles = await fetch("https://christmas-gift-key-distributor.brandosha.repl.co").then(res => res.json())
-      // puzzles.previous.push(puzzles.current)
       puzzles.unlocked = puzzles.previous.concat([puzzles.current])
       this.puzzles = puzzles
     }
 
     const { puzzles } = this
-    console.log(new Date(puzzles.next.utc).toUTCString())
 
     const { lastPassphrase } = localStorage
     const { key } = puzzles.current
@@ -74,7 +72,13 @@ const app = new Vue({
       this.clue.solved = false
       this.clue.message = ""
 
+      let cancelled = false
+      if (this.stopWritingClue) this.stopWritingClue()
+      this.stopWritingClue = () => cancelled = true
+
       for (const match of clue.message.match(/<.*?>|./gs)) {
+        if (cancelled) return
+
         const str = match
         this.clue.message += str
 
@@ -84,8 +88,8 @@ const app = new Vue({
           "\n": 300,
           ".": 200,
           "?": 200,
-          ",": 100,
-          " ": 60
+          "!": 200,
+          ",": 100
         }
 
         await sleep(sleepDurations[str] || 5)
@@ -177,14 +181,10 @@ const app = new Vue({
       const now = dayjs()
 
       const months = next.diff(now, "M")
-      let daysInMonths = 0
-      for (let i = 0; i < months; i++) {
-        daysInMonths += next.subtract(i + 1, "M").daysInMonth()
-      }
 
       const durations = [
         months,
-        next.diff(now, "d") - daysInMonths,
+        next.subtract(months, "M").diff(now, "d"),
         next.diff(now, "h") % 24,
         next.diff(now, "m") % 60,
         next.diff(now, "s") % 60
@@ -205,6 +205,20 @@ const app = new Vue({
       })
 
       return result
+    },
+    shouldShowTimer() {
+      if (!this.clue.solved) return false
+
+      const { puzzles } = this
+      const { unlocked, previous, current } = puzzles
+
+      for (let i = unlocked.length - 1; i > 0; i--) {
+        if (unlocked[i] === current) {
+          return !!previous[i - 1]
+        }
+      }
+
+      return true
     }
   }
 })
